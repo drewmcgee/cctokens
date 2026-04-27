@@ -132,6 +132,7 @@ const scan = new Command("scan")
   .option("--project <dir>", "scan all sessions for a project directory")
   .addOption(new Option("--format <fmt>", "output format").choices(["text", "json", "markdown"]).default("text"))
   .option("--context-breakdown", "show context composition at peak turn, grouped by tool")
+  .option("--verbose", "show diagnostic status messages")
   .option("--no-color", "disable color output")
   .action(async (opts) => {
     const cfg = loadConfig(opts.project);
@@ -140,7 +141,7 @@ const scan = new Command("scan")
     const cacheStore = cache.store;
 
     try {
-      if (cache.warning) console.error(cache.warning);
+      if (opts.verbose && cache.warning) console.error(cache.warning);
 
       const files: Array<{ path: string; projectPath?: string }> = [];
 
@@ -205,6 +206,7 @@ const doctor = new Command("doctor")
   .option("--project <dir>", "analyse the most recent session for a project directory")
   .addOption(new Option("--format <fmt>", "output format").choices(["text", "json", "markdown"]).default("text"))
   .option("--max-findings <n>", "maximum number of findings to show", "10")
+  .option("--verbose", "show diagnostic status messages")
   .option("--no-color", "disable color output")
   .action(async (opts) => {
     const cfg = loadConfig(opts.project);
@@ -216,7 +218,7 @@ const doctor = new Command("doctor")
     const cacheStore = cache.store;
 
     try {
-      if (cache.warning) console.error(cache.warning);
+      if (opts.verbose && cache.warning) console.error(cache.warning);
 
       let filePath: string;
       let projectPath: string | undefined;
@@ -262,6 +264,7 @@ const watch = new Command("watch")
   .option("--project <dir>", "project directory to watch")
   .option("--interval <ms>", "polling interval in milliseconds", "2000")
   .addOption(new Option("--format <fmt>", "output format").choices(["text", "json", "markdown"]).default("text"))
+  .option("--verbose", "show diagnostic status messages")
   .option("--no-color", "disable color output")
   .action(async (opts) => {
     const cfg = loadConfig(opts.project);
@@ -273,7 +276,7 @@ const watch = new Command("watch")
     const cacheStore = cache.store;
 
     console.log(`Watching for changes (polling every ${interval}ms)… Ctrl+C to stop.\n`);
-    if (cache.warning) console.error(cache.warning);
+    if (opts.verbose && cache.warning) console.error(cache.warning);
 
     let lastSizeBytes = 0;
     let targetFile: string | undefined;
