@@ -1,6 +1,7 @@
-import { statSync, existsSync, openSync, readSync, closeSync } from "fs";
+import { statSync, existsSync, createReadStream } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
+import { createInterface } from "readline";
 import fg from "fast-glob";
 
 export interface DiscoveredFile {
@@ -14,28 +15,47 @@ export interface DiscoverOptions {
   claudeProjectsDir?: string;
 }
 
-// Read the first N bytes of a file to scan for cwd without loading it entirely.
-function cwdFromFile(filePath: string): string | undefined {
-  try {
-    const fd = openSync(filePath, "r");
-    const buf = Buffer.alloc(16384); // 16 KB — enough to find cwd in any real transcript
-    const bytesRead = readSync(fd, buf, 0, buf.length, 0);
-    closeSync(fd);
-    const text = buf.subarray(0, bytesRead).toString("utf8");
-    for (const line of text.split("\n")) {
+// Read the first N lines of a file to find the cwd field.
+// Line-based so we don't truncate long lines (e.g. compact summaries injected by /compact).
+async function cwdFromFile(filePath: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const MAX_LINES = 20;
+    let lineCount = 0;
+    let resolved = false;
+
+    const rl = createInterface({
+      input: createReadStream(filePath, { encoding: "utf8" }),
+      crlfDelay: Infinity,
+    });
+
+    const finish = (value: string | undefined) => {
+      if (resolved) return;
+      resolved = true;
+      rl.close();
+      resolve(value);
+    };
+
+    rl.on("line", (line) => {
+      if (resolved) return;
+      lineCount++;
       const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const obj = JSON.parse(trimmed) as Record<string, unknown>;
-        if (typeof obj["cwd"] === "string") return obj["cwd"];
-      } catch {
-        // skip unparseable lines
+      if (trimmed) {
+        try {
+          const obj = JSON.parse(trimmed) as Record<string, unknown>;
+          if (typeof obj["cwd"] === "string") {
+            finish(obj["cwd"] as string);
+            return;
+          }
+        } catch {
+          // skip unparseable lines
+        }
       }
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
+      if (lineCount >= MAX_LINES) finish(undefined);
+    });
+
+    rl.on("close", () => finish(undefined));
+    rl.on("error", () => finish(undefined));
+  });
 }
 
 export async function discoverFiles(
@@ -56,7 +76,7 @@ export async function discoverFiles(
   for (const p of paths) {
     try {
       const st = statSync(p);
-      const projectPath = cwdFromFile(p) ?? "";
+      const projectPath = (await cwdFromFile(p)) ?? "";
       results.push({
         path: p,
         mtimeMs: st.mtimeMs,
