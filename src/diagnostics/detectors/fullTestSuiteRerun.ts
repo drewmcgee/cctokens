@@ -7,6 +7,7 @@ import { renderTemplate } from "../engine.js";
 const TEST_PATTERNS = [
   /\bpytest\b/,
   /\bnpm\s+test\b/,
+  /\bnpm\s+run\s+test\b/,
   /\bpnpm\s+test\b/,
   /\byarn\s+test\b/,
   /\bmvn\s+test\b/,
@@ -16,8 +17,49 @@ const TEST_PATTERNS = [
   /\bcargo\s+test\b/,
 ];
 
+function stripHeredocBodies(command: string): string {
+  const lines = command.split(/\r?\n/);
+  const kept: string[] = [];
+  let terminator: string | null = null;
+
+  for (const line of lines) {
+    if (terminator) {
+      if (line.trim() === terminator) terminator = null;
+      continue;
+    }
+
+    kept.push(line);
+    const match = line.match(/<<-?\s*['"]?([A-Za-z0-9_.-]+)['"]?/);
+    if (match) terminator = match[1]!;
+  }
+
+  return kept.join("\n");
+}
+
+function splitShellSegments(command: string): string[] {
+  return stripHeredocBodies(command)
+    .split(/&&|\|\||[;|]/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function hasTargetedNpmTestArgs(segment: string): boolean {
+  const marker = segment.match(/\bnpm\s+(?:run\s+)?test\b([\s\S]*)/);
+  if (!marker) return false;
+
+  const passthrough = marker[1]?.match(/\s--\s+(.+)/);
+  if (!passthrough) return false;
+
+  return passthrough[1]!
+    .split(/\s+/)
+    .some((arg) => arg.length > 0 && !arg.startsWith("-"));
+}
+
 function isTestCommand(command: string): boolean {
-  return TEST_PATTERNS.some((re) => re.test(command));
+  return splitShellSegments(command).some((segment) => {
+    if (hasTargetedNpmTestArgs(segment)) return false;
+    return TEST_PATTERNS.some((re) => re.test(segment));
+  });
 }
 
 export class FullTestSuiteRerunDetector implements Detector {

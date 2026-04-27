@@ -31,9 +31,13 @@ export class ExpensiveToolLoopDetector implements Detector {
     const families = toolUses.map((e) => toolFamily(e.toolName!));
     const findings: Finding[] = [];
 
-    // Try cycle lengths from minCycleLength up to 4
-    for (let cycleLen = minCycleLength; cycleLen <= 4; cycleLen++) {
-      for (let start = 0; start <= families.length - cycleLen * minCycles; start++) {
+    for (let start = 0; start <= families.length - minCycleLength * minCycles;) {
+      let best:
+        | { cycleLen: number; cycles: number; end: number; pattern: string[] }
+        | undefined;
+
+      for (let cycleLen = minCycleLength; cycleLen <= 4; cycleLen++) {
+        if (start > families.length - cycleLen * minCycles) continue;
         const pattern = families.slice(start, start + cycleLen);
         let cycles = 1;
         let pos = start + cycleLen;
@@ -49,35 +53,43 @@ export class ExpensiveToolLoopDetector implements Detector {
         }
 
         if (cycles >= minCycles) {
-          const patternStr = pattern.join(" → ");
-          const involved = toolUses.slice(start, start + cycleLen * cycles);
-
-          findings.push({
-            id: rule.id,
-            title: rule.title,
-            severity: rule.severity,
-            confidence: rule.confidence,
-            category: rule.category,
-            evidence: involved.slice(0, 6).map((e) => ({
-              sourceFile: e.sourceFile,
-              lineNumber: e.lineNumber,
-              timestamp: e.timestamp,
-              eventId: e.id,
-              label: "Tool call",
-              value: e.toolName ?? "",
-            })),
-            message: renderTemplate(rule.message, {
-              pattern: patternStr,
-              cycles,
-            }),
-            recommendations: rule.recommendations,
-          });
-
-          // Advance past this detected loop to avoid overlapping findings
-          start = pos - 1;
-          break;
+          const candidate = { cycleLen, cycles, end: pos, pattern };
+          if (!best || candidate.end - start > best.end - start) {
+            best = candidate;
+          }
         }
       }
+
+      if (!best) {
+        start++;
+        continue;
+      }
+
+      const patternStr = best.pattern.join(" → ");
+      const involved = toolUses.slice(start, best.end);
+
+      findings.push({
+        id: rule.id,
+        title: rule.title,
+        severity: rule.severity,
+        confidence: rule.confidence,
+        category: rule.category,
+        evidence: involved.slice(0, 6).map((e) => ({
+          sourceFile: e.sourceFile,
+          lineNumber: e.lineNumber,
+          timestamp: e.timestamp,
+          eventId: e.id,
+          label: "Tool call",
+          value: e.toolName ?? "",
+        })),
+        message: renderTemplate(rule.message, {
+          pattern: patternStr,
+          cycles: best.cycles,
+        }),
+        recommendations: rule.recommendations,
+      });
+
+      start = best.end;
     }
 
     return findings;

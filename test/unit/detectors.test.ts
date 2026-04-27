@@ -9,6 +9,8 @@ import { RepeatedFileReadDetector } from "../../src/diagnostics/detectors/repeat
 import { FullTestSuiteRerunDetector } from "../../src/diagnostics/detectors/fullTestSuiteRerun.js";
 import { BroadGrepOrGlobDetector } from "../../src/diagnostics/detectors/broadGrepOrGlob.js";
 import { ContextGrowthSpikeDetector } from "../../src/diagnostics/detectors/contextGrowthSpike.js";
+import { ExpensiveToolLoopDetector } from "../../src/diagnostics/detectors/expensiveToolLoop.js";
+import type { NormalizedEvent } from "../../src/model/events.js";
 
 const FIXTURES = join(resolve(import.meta.dirname), "../fixtures/claude-jsonl");
 
@@ -63,6 +65,52 @@ describe("FullTestSuiteRerunDetector", () => {
     expect(findings.length).toBe(1);
     expect(findings[0]!.evidence.length).toBe(4);
   });
+
+  it("does not treat heredoc body text as a test invocation", () => {
+    const d = new FullTestSuiteRerunDetector();
+    const rule = { ...rules.get("full_test_suite_rerun")!.config, thresholds: { min_count: 1 } };
+    const events: NormalizedEvent[] = [
+      {
+        id: "use-1",
+        sessionId: "sess",
+        sourceFile: "/fixture.jsonl",
+        lineNumber: 1,
+        kind: "tool_use",
+        toolName: "Bash",
+        toolUseId: "tool-1",
+        toolInput: {
+          command: "cat > /tmp/script.py << 'PYEOF'\nprint('npm test')\nPYEOF",
+        },
+        rawSizeBytes: 1,
+        estimatedTokens: 1,
+        metadata: {},
+      },
+    ];
+
+    expect(d.detect(events, rule)).toHaveLength(0);
+  });
+
+  it("does not treat targeted npm test file runs as full-suite reruns", () => {
+    const d = new FullTestSuiteRerunDetector();
+    const rule = { ...rules.get("full_test_suite_rerun")!.config, thresholds: { min_count: 1 } };
+    const events: NormalizedEvent[] = [
+      {
+        id: "use-1",
+        sessionId: "sess",
+        sourceFile: "/fixture.jsonl",
+        lineNumber: 1,
+        kind: "tool_use",
+        toolName: "Bash",
+        toolUseId: "tool-1",
+        toolInput: { command: "npm test -- test/unit/reporters.test.ts" },
+        rawSizeBytes: 1,
+        estimatedTokens: 1,
+        metadata: {},
+      },
+    ];
+
+    expect(d.detect(events, rule)).toHaveLength(0);
+  });
 });
 
 describe("BroadGrepOrGlobDetector", () => {
@@ -84,6 +132,27 @@ describe("ContextGrowthSpikeDetector", () => {
     const findings = d.detect(events, rule);
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0]!.loggedTokens).toBeGreaterThan(25000);
+  });
+});
+
+describe("ExpensiveToolLoopDetector", () => {
+  it("does not emit overlapping findings for the same tool loop region", () => {
+    const d = new ExpensiveToolLoopDetector();
+    const rule = rules.get("expensive_tool_loop")!.config;
+    const events: NormalizedEvent[] = Array.from({ length: 12 }, (_, i) => ({
+      id: `use-${i}`,
+      sessionId: "sess",
+      sourceFile: "/fixture.jsonl",
+      lineNumber: i + 1,
+      kind: "tool_use",
+      toolName: "Write",
+      toolUseId: `tool-${i}`,
+      rawSizeBytes: 1,
+      estimatedTokens: 1,
+      metadata: {},
+    }));
+
+    expect(d.detect(events, rule)).toHaveLength(1);
   });
 });
 
