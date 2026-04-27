@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { join } from "path";
 import { tmpdir } from "os";
-import { rmSync, existsSync } from "fs";
-import { SqliteStore } from "../../src/store/sqliteStore.js";
+import { chmodSync, mkdirSync, rmSync, existsSync, mkdtempSync } from "fs";
+import { SqliteStore, resolveCacheStore } from "../../src/store/sqliteStore.js";
+import { resolveDefaultCachePath } from "../../src/config.js";
 import type { ParseResult } from "../../src/model/events.js";
 
 function tempDb(): string {
@@ -95,5 +96,35 @@ describe("SqliteStore", () => {
     const cached = store.get("/file.jsonl", 2000, 600);
     expect(cached!.events.length).toBe(4);
     expect(cached!.totalLines).toBe(4);
+  });
+
+  it("disables cache when the preferred path is blocked", () => {
+    const root = mkdtempSync(join(tmpdir(), "cctokens-cache-"));
+    const blockedDir = join(root, "blocked");
+    mkdirSync(blockedDir);
+    chmodSync(blockedDir, 0o500);
+
+    const preferredPath = join(blockedDir, "cctokens.sqlite");
+    try {
+      const resolved = resolveCacheStore(preferredPath);
+
+      expect(resolved.mode).toBe("disabled");
+      expect(resolved.store).toBeNull();
+      expect(resolved.warning).toMatch(/not writable/i);
+    } finally {
+      chmodSync(blockedDir, 0o700);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("uses a platform-native default cache path", () => {
+    const path = resolveDefaultCachePath();
+    if (process.platform === "darwin") {
+      expect(path).toContain("/Library/Caches/cctokens/");
+    } else if (process.platform === "win32") {
+      expect(path.toLowerCase()).toContain("cctokens");
+    } else {
+      expect(path).toContain(".cache");
+    }
   });
 });

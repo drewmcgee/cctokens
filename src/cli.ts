@@ -7,7 +7,7 @@ import { loadConfig } from "./config.js";
 import { parseJsonlFile } from "./parsers/claudeCodeJsonl.js";
 import { discoverFiles, findLastFile, findProjectFiles, statFile } from "./parsers/discover.js";
 import { loadRules, listRules, validateRuleFile } from "./rules/loader.js";
-import { openStore } from "./store/sqliteStore.js";
+import { resolveCacheStore, type SqliteStore } from "./store/sqliteStore.js";
 import { runDetectors } from "./diagnostics/engine.js";
 import { createDefaultDetectors } from "./diagnostics/detectors/index.js";
 import { renderTextReport, renderUsageTable, type ScanSummary } from "./report/textReporter.js";
@@ -36,18 +36,19 @@ function pickFormat(opt: string | undefined, defaultFmt: OutputFormat): OutputFo
 
 async function loadEventsFromFile(
   filePath: string,
-  cfg: ReturnType<typeof loadConfig>
+  cacheStore: SqliteStore | null
 ): Promise<{ parseResult: ParseResult; fromCache: boolean }> {
-  const store = openStore(cfg.cache.path);
-  let fromCache = false;
+  if (!cacheStore) {
+    const parseResult = await parseJsonlFile(filePath, { startOffset: 0, startLine: 0 });
+    return { parseResult, fromCache: false };
+  }
 
   try {
     const { mtimeMs, sizeBytes } = statFile(filePath);
-    const cached = store.get(filePath, mtimeMs, sizeBytes);
+    const cached = cacheStore.get(filePath, mtimeMs, sizeBytes);
 
     if (cached && cached.lastByteOffset === sizeBytes) {
       // Fully cached and unchanged
-      store.close();
       return {
         parseResult: {
           events: cached.events,
@@ -59,7 +60,7 @@ async function loadEventsFromFile(
     }
 
     // Parse (incremental if file grew, full otherwise)
-    const startOffset = cached && store.isGrown(filePath, sizeBytes) ? cached.lastByteOffset : 0;
+    const startOffset = cached && cacheStore.isGrown(filePath, sizeBytes) ? cached.lastByteOffset : 0;
     const startLine = cached && startOffset > 0 ? cached.totalLines : 0;
 
     const fresh = await parseJsonlFile(filePath, { startOffset, startLine });
@@ -70,11 +71,9 @@ async function loadEventsFromFile(
 
     const result: ParseResult = { events, parseErrors, totalLines };
 
-    store.set(filePath, mtimeMs, sizeBytes, sizeBytes, totalLines, result);
-    store.close();
-    return { parseResult: result, fromCache };
+    cacheStore.set(filePath, mtimeMs, sizeBytes, sizeBytes, totalLines, result);
+    return { parseResult: result, fromCache: false };
   } catch (err) {
-    store.close();
     throw err;
   }
 }
@@ -136,8 +135,12 @@ const scan = new Command("scan")
   .action(async (opts) => {
     const cfg = loadConfig(opts.project);
     const cwd = process.cwd();
+    const cache = resolveCacheStore(cfg.cache.path);
+    const cacheStore = cache.store;
 
     try {
+      if (cache.warning) console.error(cache.warning);
+
       const files: Array<{ path: string; projectPath?: string }> = [];
 
       if (opts.file) {
@@ -160,7 +163,7 @@ const scan = new Command("scan")
       const allParseResults: Array<{ path: string; parseResult: ParseResult }> = [];
 
       for (const f of files) {
-        const { parseResult } = await loadEventsFromFile(f.path, cfg);
+        const { parseResult } = await loadEventsFromFile(f.path, cacheStore);
         summaries.push(buildSummary(f.path, parseResult, f.projectPath));
         allParseResults.push({ path: f.path, parseResult });
       }
@@ -181,6 +184,8 @@ const scan = new Command("scan")
     } catch (err) {
       console.error(`Error: ${String(err instanceof Error ? err.message : err)}`);
       process.exit(1);
+    } finally {
+      cacheStore?.close();
     }
   });
 
@@ -202,8 +207,12 @@ const doctor = new Command("doctor")
     const maxFindings = Math.max(1, parseInt(opts.maxFindings, 10) || 10);
     const fmt = pickFormat(opts.format, cfg.report.defaultFormat);
     const noColor = opts.color === false;
+    const cache = resolveCacheStore(cfg.cache.path);
+    const cacheStore = cache.store;
 
     try {
+      if (cache.warning) console.error(cache.warning);
+
       let filePath: string;
       let projectPath: string | undefined;
 
@@ -223,7 +232,7 @@ const doctor = new Command("doctor")
         projectPath = f.projectPath;
       }
 
-      const { parseResult } = await loadEventsFromFile(filePath, cfg);
+      const { parseResult } = await loadEventsFromFile(filePath, cacheStore);
       const summary = buildSummary(filePath, parseResult, projectPath);
 
       const rules = loadRules(opts.project);
@@ -234,6 +243,8 @@ const doctor = new Command("doctor")
     } catch (err) {
       console.error(`Error: ${String(err instanceof Error ? err.message : err)}`);
       process.exit(1);
+    } finally {
+      cacheStore?.close();
     }
   });
 
@@ -253,8 +264,11 @@ const watch = new Command("watch")
     const interval = Math.max(500, parseInt(opts.interval, 10) || 2000);
     const fmt = pickFormat(opts.format, cfg.report.defaultFormat);
     const noColor = opts.color === false;
+    const cache = resolveCacheStore(cfg.cache.path);
+    const cacheStore = cache.store;
 
     console.log(`Watching for changes (polling every ${interval}ms)… Ctrl+C to stop.\n`);
+    if (cache.warning) console.error(cache.warning);
 
     let lastSizeBytes = 0;
     let targetFile: string | undefined;
@@ -281,7 +295,7 @@ const watch = new Command("watch")
         if (sizeBytes === lastSizeBytes) return;
         lastSizeBytes = sizeBytes;
 
-        const { parseResult } = await loadEventsFromFile(targetFile, cfg);
+        const { parseResult } = await loadEventsFromFile(targetFile, cacheStore);
         const summary = buildSummary(targetFile, parseResult, targetProject);
         const rules = loadRules(opts.project);
         const detectors = createDefaultDetectors();
@@ -299,6 +313,7 @@ const watch = new Command("watch")
 
     process.on("SIGINT", () => {
       clearInterval(handle);
+      cacheStore?.close();
       process.exit(0);
     });
   });

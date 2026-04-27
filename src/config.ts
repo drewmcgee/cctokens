@@ -31,13 +31,34 @@ export interface CctokensConfig {
   };
 }
 
+export function resolveDefaultCachePath(): string {
+  if (process.platform === "darwin") {
+    return join(homedir(), "Library", "Caches", "cctokens", "cctokens.sqlite");
+  }
+
+  if (process.platform === "win32") {
+    const localAppData = process.env["LOCALAPPDATA"];
+    if (localAppData) {
+      return join(localAppData, "cctokens", "cctokens.sqlite");
+    }
+    return join(homedir(), "AppData", "Local", "cctokens", "cctokens.sqlite");
+  }
+
+  const xdgCacheHome = process.env["XDG_CACHE_HOME"];
+  if (xdgCacheHome) {
+    return join(xdgCacheHome, "cctokens", "cctokens.sqlite");
+  }
+
+  return join(homedir(), ".cache", "cctokens", "cctokens.sqlite");
+}
+
 export const defaultConfig: CctokensConfig = {
   version: 1,
   sources: {
     claudeProjectsDir: join(homedir(), ".claude", "projects"),
   },
   cache: {
-    path: join(homedir(), ".cache", "cctokens", "cctokens.sqlite"),
+    path: resolveDefaultCachePath(),
   },
   estimation: {
     strategy: "char_div_4",

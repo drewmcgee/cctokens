@@ -92,7 +92,8 @@ Claude Code writes every conversation turn to a JSONL file under `~/.claude/proj
 
 The context attribution uses the logged `output_tokens` field from each turn rather than estimating: each turn's output becomes the next turn's input, so summing prior output tokens gives the exact assistant history size. Tool result sizes are estimated via `ceil(chars / 4)`.
 
-Results are cached in SQLite (`~/.cache/cctokens/cctokens.sqlite`) keyed on file path and mtime, so repeated scans on unchanged sessions are instant.
+Results are cached in SQLite under the platform's standard user cache directory, keyed on file path and mtime, so repeated scans on unchanged sessions are instant.
+If that directory is not writable, `cctokens` keeps working without cache.
 
 ---
 

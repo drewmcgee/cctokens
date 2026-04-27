@@ -23,6 +23,13 @@ export interface CachedResult {
   lastLineNumber: number;
 }
 
+export interface ResolvedCacheStore {
+  store: SqliteStore | null;
+  dbPath: string | null;
+  mode: "preferred" | "disabled";
+  warning?: string;
+}
+
 export class SqliteStore {
   private db: Database.Database;
 
@@ -157,4 +164,30 @@ export class SqliteStore {
 
 export function openStore(dbPath: string): SqliteStore {
   return new SqliteStore(dbPath);
+}
+
+function openStoreOrNull(dbPath: string): SqliteStore | null {
+  try {
+    return new SqliteStore(dbPath);
+  } catch {
+    return null;
+  }
+}
+
+export function resolveCacheStore(preferredPath: string): ResolvedCacheStore {
+  const preferred = openStoreOrNull(preferredPath);
+  if (preferred) {
+    return {
+      store: preferred,
+      dbPath: preferredPath,
+      mode: "preferred",
+      };
+  }
+
+  return {
+    store: null,
+    dbPath: null,
+    mode: "disabled",
+    warning: `Warning: cache database at ${preferredPath} is not writable; continuing without cache.`,
+  };
 }
