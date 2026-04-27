@@ -1,0 +1,16 @@
+{
+  "_comment": "Optional hooks. Disabled by default. To enable the statusline hook, copy the Stop entry into your .claude/settings.json hooks section.",
+  "Stop": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "cctokens doctor --last --format text --max-findings 1 --no-color 2>/dev/null | head -5",
+          "async": true,
+          "statusMessage": "cctokens: checking last session…"
+        }
+      ]
+    }
+  ]
+}

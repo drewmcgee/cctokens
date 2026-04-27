@@ -1,0 +1,27 @@
+{
+  "name": "cctokens",
+  "version": "0.1.0",
+  "description": "Claude Code context-waste diagnostics. Scans JSONL transcripts and reports token usage and waste patterns.",
+  "author": "Drew McGee",
+  "homepage": "https://github.com/drewdmcgee/cctokens",
+  "commands": [
+    {
+      "name": "cctokens",
+      "description": "Run cctokens diagnostics for the current project",
+      "file": "commands/cctokens.md"
+    },
+    {
+      "name": "cctokens-doctor",
+      "description": "Run cctokens doctor --last and summarise top findings",
+      "file": "commands/cctokens-doctor.md"
+    }
+  ],
+  "agents": [
+    {
+      "name": "context-waste-reviewer",
+      "description": "Diagnoses Claude Code context waste using cctokens",
+      "file": "agents/context-waste-reviewer.md"
+    }
+  ],
+  "hooks": "hooks/hooks.json"
+}
