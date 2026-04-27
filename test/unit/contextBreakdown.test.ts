@@ -6,83 +6,89 @@ import { buildContextBreakdown, renderContextBreakdown } from "../../src/report/
 const FIXTURES = join(resolve(import.meta.dirname), "../fixtures/claude-jsonl");
 
 describe("buildContextBreakdown — context_breakdown fixture", () => {
-  it("attributes all five categories", async () => {
+  it("uses logged output_tokens for assistant history", async () => {
     const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
     const bd = buildContextBreakdown(events);
+    // assistantHistoryTokens comes from output_tokens of prior turns
+    expect(bd.assistantHistoryTokens).toBeGreaterThan(0);
+    expect(bd.assistantHistoryTurns).toBeGreaterThanOrEqual(1);
+  });
 
-    expect(bd.peakContextTokens).toBeGreaterThan(0);
-    expect(bd.assistantTokens).toBeGreaterThan(0);
+  it("estimates human and tool result tokens", async () => {
+    const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
+    const bd = buildContextBreakdown(events);
     expect(bd.humanTokens).toBeGreaterThan(0);
     expect(bd.toolResultTokens).toBeGreaterThan(0);
-    expect(bd.toolInvocationTokens).toBeGreaterThan(0);
   });
 
-  it("system residual is non-negative (estimates do not exceed logged)", async () => {
+  it("residualTokens is non-negative", async () => {
     const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
     const bd = buildContextBreakdown(events);
-    expect(bd.systemResidualTokens).toBeGreaterThanOrEqual(0);
-    expect(bd.estimationOverflow).toBe(false);
+    expect(bd.residualTokens).toBeGreaterThanOrEqual(0);
   });
 
-  it("totalEstimatedTokens equals sum of four categories", async () => {
+  it("residual = peak − (assistantHistory + humanTokens + toolResultTokens)", async () => {
     const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
     const bd = buildContextBreakdown(events);
-    expect(bd.totalEstimatedTokens).toBe(
-      bd.assistantTokens + bd.humanTokens + bd.toolResultTokens + bd.toolInvocationTokens
-    );
+    const expected = bd.peakContextTokens - bd.assistantHistoryTokens - bd.humanTokens - bd.toolResultTokens;
+    expect(bd.residualTokens).toBe(Math.max(0, expected));
   });
 
-  it("systemResidualTokens = peak − totalEstimated (when no overflow)", async () => {
-    const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
-    const bd = buildContextBreakdown(events);
-    if (!bd.estimationOverflow) {
-      expect(bd.systemResidualTokens).toBe(bd.peakContextTokens - bd.totalEstimatedTokens);
-    }
-  });
-
-  it("byTool breakdown matches toolResultTokens total", async () => {
+  it("byTool sum matches toolResultTokens", async () => {
     const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
     const bd = buildContextBreakdown(events);
     const byToolSum = bd.byTool.reduce((s, t) => s + t.totalEstTokens, 0);
     expect(byToolSum).toBe(bd.toolResultTokens);
   });
 
-  it("only includes events up to the peak turn", async () => {
+  it("counts tool invocations inside assistant history", async () => {
     const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
     const bd = buildContextBreakdown(events);
-    // Peak is at the first usage event since context only grows
-    expect(bd.peakTurn).toBeGreaterThan(0);
+    // Fixture has one Read call; it appears before the second (peak) usage event
+    expect(bd.toolInvocationCount).toBeGreaterThanOrEqual(1);
   });
 });
 
-describe("buildContextBreakdown — minimal fixture (no tool calls)", () => {
+describe("buildContextBreakdown — minimal fixture", () => {
   it("returns zero tool tokens for a session with no tools", async () => {
     const { events } = await parseJsonlFile(join(FIXTURES, "minimal.jsonl"));
     const bd = buildContextBreakdown(events);
     expect(bd.toolResultTokens).toBe(0);
-    expect(bd.toolInvocationTokens).toBe(0);
     expect(bd.byTool).toHaveLength(0);
   });
 
-  it("still captures assistant and human turns", async () => {
+  it("assistant history is zero (no prior turns before the only turn)", async () => {
     const { events } = await parseJsonlFile(join(FIXTURES, "minimal.jsonl"));
     const bd = buildContextBreakdown(events);
-    expect(bd.assistantTokens).toBeGreaterThan(0);
+    // minimal.jsonl has one turn — no turns before it so history = 0
+    expect(bd.assistantHistoryTokens).toBe(0);
+    expect(bd.assistantHistoryTurns).toBe(0);
+  });
+
+  it("human turns are estimated", async () => {
+    const { events } = await parseJsonlFile(join(FIXTURES, "minimal.jsonl"));
+    const bd = buildContextBreakdown(events);
     expect(bd.humanTokens).toBeGreaterThan(0);
   });
 });
 
 describe("renderContextBreakdown", () => {
-  it("contains all five category labels (noColor)", async () => {
+  it("contains all category labels (noColor)", async () => {
     const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
     const bd = buildContextBreakdown(events);
     const output = renderContextBreakdown(bd, true);
 
-    expect(output).toContain("Assistant responses");
-    expect(output).toContain("Human turns");
+    expect(output).toContain("Assistant history");
     expect(output).toContain("Tool results");
-    expect(output).toContain("Tool invocations");
-    expect(output).toContain("System prompt");
+    expect(output).toContain("Human turns");
+    expect(output).toContain("Unattributed residual");
+  });
+
+  it("marks assistant history as logged not estimated", async () => {
+    const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
+    const bd = buildContextBreakdown(events);
+    const output = renderContextBreakdown(bd, true);
+    expect(output).toContain("logged");
   });
 
   it("includes the logged peak token count in the header", async () => {
@@ -92,18 +98,17 @@ describe("renderContextBreakdown", () => {
     expect(output).toContain(bd.peakContextTokens.toLocaleString("en-US"));
   });
 
-  it("shows attribution percentage in footer", async () => {
-    const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
-    const bd = buildContextBreakdown(events);
-    const output = renderContextBreakdown(bd, true);
-    expect(output).toContain("Attributed:");
-    expect(output).toContain("% est.");
-  });
-
   it("does not contain ANSI codes when noColor=true", async () => {
     const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
     const bd = buildContextBreakdown(events);
     const output = renderContextBreakdown(bd, true);
     expect(output).not.toMatch(/\x1b\[/);
+  });
+
+  it("mentions char÷4 estimation in footer", async () => {
+    const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
+    const bd = buildContextBreakdown(events);
+    const output = renderContextBreakdown(bd, true);
+    expect(output).toContain("char÷4");
   });
 });
