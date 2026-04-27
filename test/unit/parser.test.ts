@@ -68,3 +68,51 @@ describe("parseJsonlFile — usage dedup", () => {
     }
   });
 });
+
+describe("parseJsonlFile — context_breakdown fixture", () => {
+  it("emits human_turn events for user text blocks", async () => {
+    const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
+    const humanTurns = events.filter((e) => e.kind === "human_turn");
+    // Two user text messages: compact summary + follow-up question
+    expect(humanTurns.length).toBe(2);
+    for (const ev of humanTurns) {
+      expect(ev.estimatedTokens).toBeGreaterThan(0);
+      expect(ev.role).toBe("user");
+    }
+  });
+
+  it("emits assistant_turn events for text + thinking blocks", async () => {
+    const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
+    const assistantTurns = events.filter((e) => e.kind === "assistant_turn");
+    // Two assistant messages, both have text (first also has thinking)
+    expect(assistantTurns.length).toBe(2);
+    for (const ev of assistantTurns) {
+      expect(ev.estimatedTokens).toBeGreaterThan(0);
+      expect(ev.role).toBe("assistant");
+    }
+  });
+
+  it("does not duplicate assistant_turn for the same message.id", async () => {
+    const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
+    const turns = events.filter((e) => e.kind === "assistant_turn");
+    // Unique by stripping the -turn suffix
+    const ids = turns.map((e) => e.id.replace(/-turn$/, ""));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("estimates compact summary human_turn larger than short question", async () => {
+    const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
+    const humanTurns = events
+      .filter((e) => e.kind === "human_turn")
+      .sort((a, b) => a.lineNumber - b.lineNumber);
+    // First human turn is the compact summary — should be larger than the short question
+    expect(humanTurns[0]!.estimatedTokens).toBeGreaterThan(humanTurns[1]!.estimatedTokens);
+  });
+
+  it("emits tool_use with estimatedTokens for the Read call", async () => {
+    const { events } = await parseJsonlFile(join(FIXTURES, "context_breakdown.jsonl"));
+    const toolUses = events.filter((e) => e.kind === "tool_use" && e.toolName === "Read");
+    expect(toolUses.length).toBe(1);
+    expect(toolUses[0]!.estimatedTokens).toBeGreaterThan(0);
+  });
+});

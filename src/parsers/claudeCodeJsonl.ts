@@ -144,10 +144,13 @@ export async function parseJsonlFile(
       const model = msg.model;
       const msgId = msg.id;
 
-      // Emit usage event (deduplicated by message.id)
+      // Deduplicate by message.id — same message can appear in multiple streaming events.
+      const isNewMessage = !msgId || !seenMessageIds.has(msgId);
+      if (msgId && isNewMessage) seenMessageIds.add(msgId);
+
+      // Emit usage event (deduplicated)
       const usage = normalizeUsage(msg.usage);
-      if (usage && msgId && !seenMessageIds.has(msgId)) {
-        seenMessageIds.add(msgId);
+      if (usage && isNewMessage) {
         events.push({
           id: `${raw.uuid ?? randomUUID()}-usage`,
           sessionId,
@@ -163,6 +166,33 @@ export async function parseJsonlFile(
           usage,
           metadata: {},
         });
+      }
+
+      // Emit assistant_turn (text + thinking, deduplicated)
+      if (isNewMessage && Array.isArray(msg.content)) {
+        let turnText = "";
+        for (const block of msg.content) {
+          if (typeof block !== "object" || block === null) continue;
+          const b = block as Record<string, unknown>;
+          if (b["type"] === "text" && typeof b["text"] === "string") turnText += b["text"];
+          else if (b["type"] === "thinking" && typeof b["thinking"] === "string") turnText += b["thinking"];
+        }
+        if (turnText.length > 0) {
+          events.push({
+            id: `${raw.uuid ?? randomUUID()}-turn`,
+            sessionId,
+            projectPath,
+            sourceFile: filePath,
+            lineNumber,
+            timestamp,
+            kind: "assistant_turn",
+            role: "assistant",
+            model,
+            rawSizeBytes: Buffer.byteLength(turnText, "utf8"),
+            estimatedTokens: estimator.estimate(turnText),
+            metadata: {},
+          });
+        }
       }
 
       // Emit tool_use events
@@ -201,38 +231,55 @@ export async function parseJsonlFile(
         for (const block of msg.content) {
           if (typeof block !== "object" || block === null) continue;
           const b = block as Record<string, unknown>;
-          if (b["type"] !== "tool_result") continue;
 
-          const toolUseId = typeof b["tool_use_id"] === "string" ? b["tool_use_id"] : undefined;
-          const toolCall = toolUseId ? toolCallMap.get(toolUseId) : undefined;
+          if (b["type"] === "tool_result") {
+            const toolUseId = typeof b["tool_use_id"] === "string" ? b["tool_use_id"] : undefined;
+            const toolCall = toolUseId ? toolCallMap.get(toolUseId) : undefined;
 
-          // Prefer structured toolUseResult for Bash output size
-          let text: string;
-          if (raw.toolUseResult && toolCall?.name === "Bash") {
-            const tr = raw.toolUseResult;
-            text = (tr.stdout ?? "") + (tr.stderr ?? "");
-          } else {
-            text = extractText(b["content"]);
+            // Prefer structured toolUseResult for Bash output size
+            let text: string;
+            if (raw.toolUseResult && toolCall?.name === "Bash") {
+              const tr = raw.toolUseResult;
+              text = (tr.stdout ?? "") + (tr.stderr ?? "");
+            } else {
+              text = extractText(b["content"]);
+            }
+
+            const rawBytes = Buffer.byteLength(text, "utf8");
+            events.push({
+              id: raw.uuid ?? randomUUID(),
+              sessionId,
+              projectPath,
+              sourceFile: filePath,
+              lineNumber,
+              timestamp,
+              kind: "tool_result",
+              role: "user",
+              toolName: toolCall?.name,
+              toolInput: toolCall?.input,
+              toolUseId,
+              text: text.slice(0, 2000),
+              rawSizeBytes: rawBytes,
+              estimatedTokens: estimator.estimate(text),
+              metadata: { isError: b["is_error"] === true },
+            });
+          } else if (b["type"] === "text" && typeof b["text"] === "string" && b["text"].length > 0) {
+            // Human conversation text (includes compact summaries injected by /compact)
+            const text = b["text"] as string;
+            events.push({
+              id: `${raw.uuid ?? randomUUID()}-human`,
+              sessionId,
+              projectPath,
+              sourceFile: filePath,
+              lineNumber,
+              timestamp,
+              kind: "human_turn",
+              role: "user",
+              rawSizeBytes: Buffer.byteLength(text, "utf8"),
+              estimatedTokens: estimator.estimate(text),
+              metadata: {},
+            });
           }
-
-          const rawBytes = Buffer.byteLength(text, "utf8");
-          events.push({
-            id: raw.uuid ?? randomUUID(),
-            sessionId,
-            projectPath,
-            sourceFile: filePath,
-            lineNumber,
-            timestamp,
-            kind: "tool_result",
-            role: "user",
-            toolName: toolCall?.name,
-            toolInput: toolCall?.input,
-            toolUseId,
-            text: text.slice(0, 2000),
-            rawSizeBytes: rawBytes,
-            estimatedTokens: estimator.estimate(text),
-            metadata: { isError: b["is_error"] === true },
-          });
         }
       }
     }

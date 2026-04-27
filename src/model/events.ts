@@ -3,6 +3,8 @@ export type EventKind =
   | "assistant_usage"
   | "tool_use"
   | "tool_result"
+  | "human_turn"
+  | "assistant_turn"
   | "unknown";
 
 export interface TokenUsage {

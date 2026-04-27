@@ -9,14 +9,27 @@ export interface ToolContribution {
 }
 
 export interface ContextBreakdown {
-  peakContextTokens: number;
+  peakContextTokens: number;   // logged total context at peak turn
   peakTurn: number;
-  totalToolResultTokens: number;
-  byTool: ToolContribution[];
+
+  // Estimated components (all events up to peak turn)
+  assistantTokens: number;      // assistant text + thinking blocks
+  humanTokens: number;          // human conversation text (incl. compact summaries)
+  toolResultTokens: number;     // tool results injected into context
+  toolInvocationTokens: number; // tool_use call blocks (name + input)
+
+  // logged_peak − sum(above); represents system prompt + estimation error
+  systemResidualTokens: number;
+  // true when estimates exceed logged total (char÷4 can over-count compressed text)
+  estimationOverflow: boolean;
+
+  totalEstimatedTokens: number; // sum of the four estimated categories
+
+  byTool: ToolContribution[];   // tool results broken down by tool name
 }
 
 export function buildContextBreakdown(events: NormalizedEvent[]): ContextBreakdown {
-  // Find peak context turn (highest total context = input + cache_read + cache_write)
+  // Find the turn with the highest total context (input + cache_read + cache_write)
   const usageEvents = events
     .filter((e) => e.kind === "assistant_usage" && e.usage)
     .sort((a, b) => a.lineNumber - b.lineNumber);
@@ -34,14 +47,37 @@ export function buildContextBreakdown(events: NormalizedEvent[]): ContextBreakdo
     }
   }
 
-  // All tool results up to peak turn
+  const upToPeak = (e: NormalizedEvent) => e.lineNumber <= peakTurn;
+
+  // Assistant text + thinking
+  const assistantTokens = events
+    .filter((e) => e.kind === "assistant_turn" && upToPeak(e))
+    .reduce((s, e) => s + e.estimatedTokens, 0);
+
+  // Human conversation (incl. compact summaries)
+  const humanTokens = events
+    .filter((e) => e.kind === "human_turn" && upToPeak(e))
+    .reduce((s, e) => s + e.estimatedTokens, 0);
+
+  // Tool results
   const toolResults = events.filter(
-    (e) => e.kind === "tool_result" && e.lineNumber <= peakTurn && e.estimatedTokens > 0
+    (e) => e.kind === "tool_result" && upToPeak(e) && e.estimatedTokens > 0
   );
+  const toolResultTokens = toolResults.reduce((s, e) => s + e.estimatedTokens, 0);
 
-  const totalToolResultTokens = toolResults.reduce((s, e) => s + e.estimatedTokens, 0);
+  // Tool invocations (the tool_use call blocks — name + input JSON)
+  const toolInvocationTokens = events
+    .filter((e) => e.kind === "tool_use" && upToPeak(e))
+    .reduce((s, e) => s + e.estimatedTokens, 0);
 
-  // Group by tool name
+  const totalEstimatedTokens =
+    assistantTokens + humanTokens + toolResultTokens + toolInvocationTokens;
+
+  const rawResidual = peakContextTokens - totalEstimatedTokens;
+  const systemResidualTokens = Math.max(0, rawResidual);
+  const estimationOverflow = rawResidual < 0;
+
+  // Group tool results by tool name
   const byToolMap = new Map<string, NormalizedEvent[]>();
   for (const ev of toolResults) {
     const name = ev.toolName ?? "unknown";
@@ -65,10 +101,20 @@ export function buildContextBreakdown(events: NormalizedEvent[]): ContextBreakdo
       });
     byTool.push({ toolName, totalEstTokens, callCount: results.length, topCalls: top });
   }
-
   byTool.sort((a, b) => b.totalEstTokens - a.totalEstTokens);
 
-  return { peakContextTokens, peakTurn, totalToolResultTokens, byTool };
+  return {
+    peakContextTokens,
+    peakTurn,
+    assistantTokens,
+    humanTokens,
+    toolResultTokens,
+    toolInvocationTokens,
+    systemResidualTokens,
+    estimationOverflow,
+    totalEstimatedTokens,
+    byTool,
+  };
 }
 
 function fmtNum(n: number): string {
@@ -76,8 +122,13 @@ function fmtNum(n: number): string {
 }
 
 function bar(fraction: number, width = 20): string {
-  const filled = Math.round(fraction * width);
+  const filled = Math.round(Math.max(0, Math.min(1, fraction)) * width);
   return "█".repeat(filled) + "░".repeat(width - filled);
+}
+
+function pctStr(n: number, total: number): string {
+  if (total === 0) return "  0%";
+  return ((n / total) * 100).toFixed(0).padStart(3) + "%";
 }
 
 export function renderContextBreakdown(
@@ -86,25 +137,53 @@ export function renderContextBreakdown(
 ): string {
   const bold = (s: string) => (noColor ? s : pc.bold(s));
   const dim = (s: string) => (noColor ? s : pc.dim(s));
+  const yellow = (s: string) => (noColor ? s : pc.yellow(s));
   const lines: string[] = [];
 
-  lines.push(bold("Context composition at peak:"));
-  lines.push(dim(`  Peak context window: ~${fmtNum(bd.peakContextTokens)} tokens (logged)`));
-  lines.push(dim(`  Tool results injected: ~${fmtNum(bd.totalToolResultTokens)} tokens (est.)`));
-  lines.push("");
-  lines.push(bold("By tool:"));
+  const peak = bd.peakContextTokens;
 
+  lines.push(bold(`Context composition at peak (~${fmtNum(peak)} tokens logged):`));
+  lines.push("");
+
+  const row = (
+    label: string,
+    tokens: number,
+    suffix: string,
+    indent = ""
+  ) => {
+    const b = bar(tokens / peak);
+    const p = pctStr(tokens, peak);
+    lines.push(`${indent}  ${label.padEnd(22)} ${b} ${p}  ~${fmtNum(tokens)} ${suffix}`);
+  };
+
+  row("Assistant responses", bd.assistantTokens, "tokens est.");
+  row("Human turns", bd.humanTokens, "tokens est.");
+
+  // Tool results row + per-tool sub-rows
+  const totalCalls = bd.byTool.reduce((s, t) => s + t.callCount, 0);
+  row("Tool results", bd.toolResultTokens, `tokens est. (${totalCalls} calls)`);
   for (const t of bd.byTool) {
-    const pct = bd.totalToolResultTokens > 0
-      ? t.totalEstTokens / bd.totalToolResultTokens
-      : 0;
-    const pctStr = (pct * 100).toFixed(0).padStart(3) + "%";
-    const b = bar(pct);
-    lines.push(`  ${t.toolName.padEnd(10)} ${b} ${pctStr}  ~${fmtNum(t.totalEstTokens)} tokens est. (${t.callCount} calls)`);
+    const b = bar(t.totalEstTokens / peak);
+    const p = pctStr(t.totalEstTokens, peak);
+    lines.push(dim(`      ${t.toolName.padEnd(18)} ${b} ${p}  ~${fmtNum(t.totalEstTokens)} est. (${t.callCount} calls)`));
     for (const call of t.topCalls) {
-      lines.push(dim(`               ${call.label}  ~${fmtNum(call.estimatedTokens)} est.`));
+      lines.push(dim(`                           ${call.label}  ~${fmtNum(call.estimatedTokens)} est.`));
     }
   }
+
+  row("Tool invocations", bd.toolInvocationTokens, "tokens est.");
+
+  // System + residual — the unobservable constant (system prompt) plus estimation error
+  if (bd.estimationOverflow) {
+    lines.push(yellow(`    System prompt           (estimates exceeded logged total by ~${fmtNum(bd.totalEstimatedTokens - peak)} tokens)`));
+  } else {
+    row("System prompt (est.)", bd.systemResidualTokens, "tokens (logged − est.)");
+  }
+
+  lines.push("");
+  const attributedPct = peak > 0 ? ((bd.totalEstimatedTokens / peak) * 100).toFixed(0) : "0";
+  lines.push(dim(`  Attributed: ~${fmtNum(bd.totalEstimatedTokens)} / ${fmtNum(peak)} logged tokens (${attributedPct}% est.)`));
+  lines.push(dim(`  System prompt = logged peak − attributed; includes estimation error.`));
 
   return lines.join("\n");
 }
