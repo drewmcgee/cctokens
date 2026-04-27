@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { loadRules, listRules, validateRuleFile } from "../../src/rules/loader.js";
-import { join, resolve } from "path";
+import { loadRules, validateRuleFile } from "../../src/rules/loader.js";
+import { join } from "path";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
 

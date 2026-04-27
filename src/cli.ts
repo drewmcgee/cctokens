@@ -1,11 +1,10 @@
 import { Command, Option } from "commander";
 import { resolve, join } from "path";
-import { statSync, writeFileSync, mkdirSync, existsSync } from "fs";
-import { homedir } from "os";
+import { writeFileSync, mkdirSync, existsSync } from "fs";
 
 import { loadConfig } from "./config.js";
 import { parseJsonlFile } from "./parsers/claudeCodeJsonl.js";
-import { discoverFiles, findLastFile, findProjectFiles, statFile } from "./parsers/discover.js";
+import { findLastFile, findProjectFiles, statFile } from "./parsers/discover.js";
 import { loadRules, listRules, validateRuleFile } from "./rules/loader.js";
 import { resolveCacheStore, type SqliteStore } from "./store/sqliteStore.js";
 import { runDetectors } from "./diagnostics/engine.js";
