@@ -3,7 +3,16 @@
   "version": "0.1.0",
   "description": "Claude Code context-waste diagnostics CLI",
   "license": "MIT",
+  "author": "Drew McGee",
   "type": "module",
+  "homepage": "https://github.com/drewdmcgee/cctokens#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drewdmcgee/cctokens.git"
+  },
+  "bugs": {
+    "url": "https://github.com/drewdmcgee/cctokens/issues"
+  },
   "bin": {
     "cctokens": "./dist/cli.js"
   },
@@ -17,7 +26,6 @@
   },
   "files": [
     "dist",
-    "src/rules/builtin",
     "commands",
     "agents",
     "hooks",
@@ -29,7 +37,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -21,6 +21,18 @@ Context composition at peak (~160,456 tokens logged):
 
 ---
 
+## Who it's for
+
+`cctokens` is for people actively using Claude Code and trying to answer questions like:
+
+- Why did this session get expensive?
+- Why did context suddenly jump?
+- What behavior should I change to avoid wasting context next time?
+
+It is not a generic token counter, and it is not a cloud analytics product. The tool is optimized for local transcript diagnostics and concrete workflow fixes.
+
+---
+
 ## Install
 
 ```bash
@@ -46,6 +58,7 @@ cctokens scan --project .           # all sessions in this project
 
 ```bash
 cctokens doctor
+cctokens doctor --last
 cctokens doctor --format json
 cctokens doctor --format markdown
 ```
@@ -86,6 +99,20 @@ Thresholds are configurable. Drop a YAML file in `.cctokens/rules/` to override 
 
 ---
 
+## How to interpret the output
+
+`scan` answers "where did the tokens go?" Use it when you want totals, context composition, or a quick read on whether the session was dominated by assistant history, tool output, or cache activity.
+
+`doctor` answers "what likely caused avoidable waste?" Treat findings as ranked diagnostics, not moral judgments. A `critical` finding means the tool saw a pattern that is usually expensive enough to change behavior immediately. A `warning` means you should inspect it. `info` findings are useful patterns, but not always worth acting on.
+
+The most useful workflow is usually:
+
+1. Run `cctokens scan --context-breakdown` to see the high-level shape.
+2. Run `cctokens doctor` to identify the worst avoidable patterns.
+3. Change one workflow habit at a time and compare the next session.
+
+---
+
 ## How it works
 
 Claude Code writes every conversation turn to a JSONL file under `~/.claude/projects/`. `cctokens` reads those files directly — no network calls, no API keys, no telemetry.
@@ -94,6 +121,16 @@ The context attribution uses the logged `output_tokens` field from each turn rat
 
 Results are cached in SQLite under the platform's standard user cache directory, keyed on file path and mtime, so repeated scans on unchanged sessions are instant.
 If that directory is not writable, `cctokens` keeps working without cache.
+
+---
+
+## Limitations
+
+- `cctokens` only supports Claude Code transcripts today.
+- Per-turn and per-session `usage` numbers from Claude Code are treated as authoritative, but some component attribution is still estimated.
+- Tool payload sizing uses `ceil(chars / 4)`, which is directionally useful but not tokenizer-exact.
+- Some context is inherently unattributable from the transcript alone, so you may see a small residual bucket.
+- The tool diagnoses observed patterns after the fact. It does not prevent waste in real time.
 
 ---
 
