@@ -38,7 +38,7 @@ export class LongSessionDragDetector implements Detector {
         severity: rule.severity,
         confidence: rule.confidence,
         category: rule.category,
-        estimatedTokens: maxInputTokens,
+        loggedTokens: maxInputTokens,
         evidence: [
           {
             sourceFile: lastUsage.sourceFile,

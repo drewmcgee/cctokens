@@ -75,7 +75,7 @@ export class ContextGrowthSpikeDetector implements Detector {
           severity: rule.severity,
           confidence: rule.confidence,
           category: rule.category,
-          estimatedTokens: delta,
+          loggedTokens: delta,
           evidence,
           message: renderTemplate(rule.message, { delta }),
           recommendations: rule.recommendations,

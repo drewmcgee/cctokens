@@ -19,6 +19,7 @@ function makeSummary(overrides: Partial<ScanSummary> = {}): ScanSummary {
     totalOutputTokens: 678,
     totalCacheReadTokens: 9000,
     totalCacheWriteTokens: 3000,
+    totalProcessedInputTokens: 24345,
     parseErrors: 0,
     totalLines: 20,
     ...overrides,
@@ -84,7 +85,7 @@ describe("markdownReporter", () => {
   it("produces markdown with heading and table", () => {
     const output = renderMarkdownReport(makeSummary(), []);
     expect(output).toContain("# cctokens Report");
-    expect(output).toContain("| Input |");
+    expect(output).toContain("| Fresh input |");
     expect(output).toContain("No waste patterns detected");
   });
 });

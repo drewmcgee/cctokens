@@ -63,7 +63,7 @@ export class CacheWriteSpikeDetector implements Detector {
         severity: rule.severity,
         confidence: rule.confidence,
         category: rule.category,
-        estimatedTokens: tokens,
+        loggedTokens: tokens,
         evidence,
         message: renderTemplate(rule.message, { tokens }),
         recommendations: rule.recommendations,

@@ -83,7 +83,7 @@ describe("ContextGrowthSpikeDetector", () => {
     const rule = rules.get("context_growth_spike")!.config;
     const findings = d.detect(events, rule);
     expect(findings.length).toBeGreaterThan(0);
-    expect(findings[0]!.estimatedTokens).toBeGreaterThan(25000);
+    expect(findings[0]!.loggedTokens).toBeGreaterThan(25000);
   });
 });
 

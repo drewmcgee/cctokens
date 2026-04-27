@@ -24,10 +24,15 @@ export interface Finding {
   severity: Severity;
   confidence: Confidence;
   category: FindingCategory;
+  loggedTokens?: number;
   estimatedTokens?: number;
   evidence: Evidence[];
   message: string;
   recommendations: string[];
+}
+
+export function findingImpactTokens(finding: Finding): number {
+  return finding.loggedTokens ?? finding.estimatedTokens ?? 0;
 }
 
 export function sortFindings(findings: Finding[]): Finding[] {
@@ -44,7 +49,7 @@ export function sortFindings(findings: Finding[]): Finding[] {
   return [...findings].sort((a, b) => {
     const sv = severityRank[a.severity] - severityRank[b.severity];
     if (sv !== 0) return sv;
-    const te = (b.estimatedTokens ?? 0) - (a.estimatedTokens ?? 0);
+    const te = findingImpactTokens(b) - findingImpactTokens(a);
     if (te !== 0) return te;
     return confidenceRank[a.confidence] - confidenceRank[b.confidence];
   });

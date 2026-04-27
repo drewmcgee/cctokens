@@ -103,6 +103,7 @@ function buildSummary(filePath: string, result: ParseResult, projectPath?: strin
     totalOutputTokens: totalOutput,
     totalCacheReadTokens: totalCR,
     totalCacheWriteTokens: totalCW,
+    totalProcessedInputTokens: totalInput + totalCR + totalCW,
     parseErrors: result.parseErrors,
     totalLines: result.totalLines,
   };
@@ -174,7 +175,11 @@ const scan = new Command("scan")
         console.log(renderUsageTable(summaries, noColor));
 
         if (opts.contextBreakdown) {
-          for (const { parseResult } of allParseResults) {
+          for (const { path, parseResult } of allParseResults) {
+            if (allParseResults.length > 1) {
+              console.log("");
+              console.log(`Session file: ${path}`);
+            }
             const bd = buildContextBreakdown(parseResult.events);
             console.log("");
             console.log(renderContextBreakdown(bd, noColor));

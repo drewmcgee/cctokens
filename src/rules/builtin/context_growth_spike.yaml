@@ -11,7 +11,7 @@ applies_to:
 thresholds:
   min_spike_tokens: 25000
 
-message: "Context grew by ~{{delta}} tokens (est.) in a single turn."
+message: "Context grew by {{delta}} logged input tokens in a single turn."
 recommendations:
   - "Use /compact to compress context before continuing."
   - "Start a fresh session with a concise handoff note."

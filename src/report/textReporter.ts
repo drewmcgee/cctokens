@@ -1,6 +1,5 @@
 import pc from "picocolors";
 import type { Finding } from "../model/findings.js";
-import type { TokenUsage } from "../model/events.js";
 
 export interface ScanSummary {
   sourceFile: string;
@@ -10,6 +9,7 @@ export interface ScanSummary {
   totalOutputTokens: number;
   totalCacheReadTokens: number;
   totalCacheWriteTokens: number;
+  totalProcessedInputTokens: number;
   parseErrors: number;
   totalLines: number;
 }
@@ -30,6 +30,12 @@ function fmtNum(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+function oneLine(value: string | number, maxLength = 120): string {
+  const text = String(value).replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1)}…`;
+}
+
 export function renderTextReport(
   summary: ScanSummary,
   findings: Finding[],
@@ -44,11 +50,12 @@ export function renderTextReport(
   lines.push(bold(`Session: ${projectLabel}`));
   lines.push(dim(`File:    ${summary.sourceFile}`));
   lines.push("");
-  lines.push(bold("Logged tokens:"));
-  lines.push(`  input:       ${fmtNum(summary.totalInputTokens)}`);
-  lines.push(`  output:      ${fmtNum(summary.totalOutputTokens)}`);
-  lines.push(`  cache read:  ${fmtNum(summary.totalCacheReadTokens)}`);
-  lines.push(`  cache write: ${fmtNum(summary.totalCacheWriteTokens)}`);
+  lines.push(bold("Logged usage:"));
+  lines.push(`  fresh input:           ${fmtNum(summary.totalInputTokens)}`);
+  lines.push(`  cache read input:      ${fmtNum(summary.totalCacheReadTokens)}`);
+  lines.push(`  cache creation input:  ${fmtNum(summary.totalCacheWriteTokens)}`);
+  lines.push(`  total input processed: ${fmtNum(summary.totalProcessedInputTokens)}`);
+  lines.push(`  output:                ${fmtNum(summary.totalOutputTokens)}`);
 
   if (summary.parseErrors > 0) {
     lines.push(
@@ -73,9 +80,18 @@ export function renderTextReport(
     const severityLabel = severityColor(f.severity, `[${f.severity}]`, noColor);
     lines.push(`${prefix} ${bold(f.title)} ${severityLabel}`);
     lines.push(`   ${f.message}`);
+    if (f.loggedTokens !== undefined) {
+      lines.push(`   ${dim("Impact:")} ${fmtNum(f.loggedTokens)} logged tokens`);
+    } else if (f.estimatedTokens !== undefined) {
+      lines.push(`   ${dim("Impact:")} ~${fmtNum(f.estimatedTokens)} tokens est.`);
+    }
 
     if (f.evidence.length > 0) {
-      lines.push(`   ${dim("Evidence:")} ${f.evidence.slice(0, 3).map((e) => e.value).join(", ")}`);
+      const evidence = f.evidence
+        .slice(0, 3)
+        .map((e) => `${e.label}: ${oneLine(e.value)}`)
+        .join("; ");
+      lines.push(`   ${dim("Evidence:")} ${evidence}`);
     }
 
     if (f.recommendations.length > 0) {
@@ -102,14 +118,16 @@ export function renderUsageTable(summaries: ScanSummary[], noColor = false): str
   const totalOut = summaries.reduce((s, r) => s + r.totalOutputTokens, 0);
   const totalCR = summaries.reduce((s, r) => s + r.totalCacheReadTokens, 0);
   const totalCW = summaries.reduce((s, r) => s + r.totalCacheWriteTokens, 0);
+  const totalProcessed = summaries.reduce((s, r) => s + r.totalProcessedInputTokens, 0);
 
   lines.push(bold("Logged token totals across sessions:"));
   lines.push("");
   lines.push(`  Total sessions: ${summaries.length}`);
-  lines.push(`  Input tokens:       ${fmtNum(totalIn)}`);
-  lines.push(`  Output tokens:      ${fmtNum(totalOut)}`);
-  lines.push(`  Cache reads:        ${fmtNum(totalCR)}`);
-  lines.push(`  Cache writes:       ${fmtNum(totalCW)}`);
+  lines.push(`  Fresh input:           ${fmtNum(totalIn)}`);
+  lines.push(`  Cache read input:      ${fmtNum(totalCR)}`);
+  lines.push(`  Cache creation input:  ${fmtNum(totalCW)}`);
+  lines.push(`  Total input processed: ${fmtNum(totalProcessed)}`);
+  lines.push(`  Output tokens:         ${fmtNum(totalOut)}`);
 
   return lines.join("\n");
 }
