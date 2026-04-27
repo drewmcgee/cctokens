@@ -13,7 +13,7 @@ import { createDefaultDetectors } from "./diagnostics/detectors/index.js";
 import { renderTextReport, renderUsageTable, type ScanSummary } from "./report/textReporter.js";
 import { renderJsonReport } from "./report/jsonReporter.js";
 import { renderMarkdownReport } from "./report/markdownReporter.js";
-import type { NormalizedEvent } from "./model/events.js";
+import { buildContextBreakdown, renderContextBreakdown } from "./report/contextBreakdown.js";
 import type { ParseResult } from "./model/events.js";
 
 const program = new Command();
@@ -131,6 +131,7 @@ const scan = new Command("scan")
   .option("--file <path>", "scan a specific JSONL file")
   .option("--project <dir>", "scan all sessions for a project directory")
   .addOption(new Option("--format <fmt>", "output format").choices(["text", "json", "markdown"]).default("text"))
+  .option("--context-breakdown", "show context composition at peak turn, grouped by tool")
   .option("--no-color", "disable color output")
   .action(async (opts) => {
     const cfg = loadConfig(opts.project);
@@ -152,19 +153,30 @@ const scan = new Command("scan")
         files.push({ path: found.path, projectPath: found.projectPath });
       }
 
+      const fmt = pickFormat(opts.format, cfg.report.defaultFormat);
+      const noColor = opts.color === false;
+
       const summaries: ScanSummary[] = [];
+      const allParseResults: Array<{ path: string; parseResult: ParseResult }> = [];
+
       for (const f of files) {
         const { parseResult } = await loadEventsFromFile(f.path, cfg);
         summaries.push(buildSummary(f.path, parseResult, f.projectPath));
+        allParseResults.push({ path: f.path, parseResult });
       }
-
-      const fmt = pickFormat(opts.format, cfg.report.defaultFormat);
-      const noColor = opts.color === false;
 
       if (fmt === "json") {
         console.log(JSON.stringify(summaries, null, 2));
       } else {
         console.log(renderUsageTable(summaries, noColor));
+
+        if (opts.contextBreakdown) {
+          for (const { parseResult } of allParseResults) {
+            const bd = buildContextBreakdown(parseResult.events);
+            console.log("");
+            console.log(renderContextBreakdown(bd, noColor));
+          }
+        }
       }
     } catch (err) {
       console.error(`Error: ${String(err instanceof Error ? err.message : err)}`);
