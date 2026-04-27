@@ -1,0 +1,19 @@
+id: broad_grep_or_glob
+title: Broad repository search
+description: Detects Grep or Glob calls over the repo root or wildcard patterns.
+category: search
+severity: warning
+confidence: medium
+
+applies_to:
+  event_kind: tool_use
+  tool_names: ["Grep", "Glob"]
+
+thresholds:
+  min_count: 3
+
+message: "{{count}} broad Grep/Glob searches over repo root. Estimated payload: ~{{tokens}} tokens (est.)."
+recommendations:
+  - "Narrow searches to a specific package or subdirectory."
+  - "Use more specific patterns instead of `**` or `.`."
+  - "Cache search results in a scratch file rather than re-running."

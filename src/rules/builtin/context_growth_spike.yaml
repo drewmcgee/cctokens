@@ -1,0 +1,18 @@
+id: context_growth_spike
+title: Context window grew sharply
+description: Detects a large jump in input token count between consecutive assistant turns.
+category: context_growth
+severity: critical
+confidence: high
+
+applies_to:
+  event_kind: assistant_usage
+
+thresholds:
+  min_spike_tokens: 25000
+
+message: "Context grew by ~{{delta}} tokens (est.) in a single turn."
+recommendations:
+  - "Use /compact to compress context before continuing."
+  - "Start a fresh session with a concise handoff note."
+  - "Avoid large tool outputs in a single turn."

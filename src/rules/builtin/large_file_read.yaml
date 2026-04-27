@@ -1,0 +1,19 @@
+id: large_file_read
+title: Large file read into context
+description: Detects when a Read tool result payload exceeds the token threshold.
+category: large_output
+severity: warning
+confidence: high
+
+applies_to:
+  event_kind: tool_result
+  tool_names: ["Read"]
+
+thresholds:
+  min_estimated_tokens: 8000
+
+message: "{{file}} loaded ~{{tokens}} tokens (est.) into context."
+recommendations:
+  - "Use the `offset` and `limit` parameters to read targeted ranges."
+  - "Ask Claude to summarize the file once rather than reading it whole."
+  - "Extract only the sections relevant to the current task."

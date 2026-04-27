@@ -1,0 +1,19 @@
+id: repeated_file_read
+title: File re-read repeatedly
+description: Detects when Claude repeatedly reads the same file.
+category: repeated_work
+severity: warning
+confidence: high
+
+applies_to:
+  event_kind: tool_use
+  tool_names: ["Read"]
+
+thresholds:
+  min_count: 5
+
+message: "{{file}} was read {{count}} times. Estimated payload: ~{{tokens}} tokens (est.)."
+recommendations:
+  - "Ask Claude to summarize this file once and refer to the summary."
+  - "Create `.claude/notes/{{basename}}.md` with a file summary."
+  - "Avoid rereading unless the file has changed."

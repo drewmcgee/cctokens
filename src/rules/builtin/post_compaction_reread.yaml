@@ -1,0 +1,19 @@
+id: post_compaction_reread
+title: Files re-read after compaction
+description: Detects files read multiple times after a compaction or summary event.
+category: repeated_work
+severity: info
+confidence: low
+
+applies_to:
+  event_kind: tool_use
+  tool_names: ["Read"]
+
+thresholds:
+  min_count: 3
+
+message: "{{count}} file reads detected after compaction. Estimated payload: ~{{tokens}} tokens (est.)."
+recommendations:
+  - "Include key file summaries in your compaction prompt."
+  - "Add a CLAUDE.md section with the files Claude needs to know about."
+  - "Explicitly tell Claude which files changed since the last session."

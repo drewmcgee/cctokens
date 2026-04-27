@@ -1,0 +1,19 @@
+id: long_session_drag
+title: Long session with large context
+description: Detects sessions with many turns and a large input token window.
+category: context_growth
+severity: warning
+confidence: medium
+
+applies_to:
+  event_kind: assistant_usage
+
+thresholds:
+  min_turns: 40
+  min_input_tokens: 100000
+
+message: "Session has {{turns}} turns and {{tokens}} logged input tokens."
+recommendations:
+  - "Start a fresh session with a concise handoff note."
+  - "Use /compact to summarise context before continuing."
+  - "Break long tasks into shorter focused sessions."

@@ -1,0 +1,19 @@
+id: large_bash_output
+title: Large Bash output injected into context
+description: Detects when a Bash tool result payload exceeds the token threshold.
+category: large_output
+severity: warning
+confidence: high
+
+applies_to:
+  event_kind: tool_result
+  tool_names: ["Bash"]
+
+thresholds:
+  min_estimated_tokens: 4000
+
+message: "Bash output injected ~{{tokens}} tokens (est.) into context."
+recommendations:
+  - "Pipe noisy commands through `tail -200` or `head -100`."
+  - "Use quiet flags (e.g. `--quiet`, `-q`, `2>/dev/null`)."
+  - "Redirect verbose logs to a file and read only the tail."

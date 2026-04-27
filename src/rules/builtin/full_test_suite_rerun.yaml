@@ -1,0 +1,19 @@
+id: full_test_suite_rerun
+title: Full test suite run repeatedly
+description: Detects repeated full test suite invocations with large output.
+category: tests
+severity: warning
+confidence: high
+
+applies_to:
+  event_kind: tool_use
+  tool_names: ["Bash"]
+
+thresholds:
+  min_count: 3
+
+message: "Full test suite run {{count}} times. Estimated payload: ~{{tokens}} tokens (est.)."
+recommendations:
+  - "Run targeted tests instead of the full suite (e.g. `pytest path/to/test_file.py`)."
+  - "Use quiet mode (`pytest -q`, `npm test -- --silent`)."
+  - "Pipe output through `tail -200` to limit context injection."

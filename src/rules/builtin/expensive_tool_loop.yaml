@@ -1,0 +1,19 @@
+id: expensive_tool_loop
+title: Repeated tool loop pattern
+description: Detects repeated cycles of the same tool family without progress.
+category: repeated_work
+severity: warning
+confidence: medium
+
+applies_to:
+  event_kind: tool_use
+
+thresholds:
+  min_cycle_length: 2
+  min_cycles: 3
+
+message: "Tool loop detected: {{pattern}} repeated {{cycles}} times."
+recommendations:
+  - "Ask Claude to form a plan before making further tool calls."
+  - "Summarize findings so far and proceed more directly."
+  - "Break the task into a single targeted subtask."

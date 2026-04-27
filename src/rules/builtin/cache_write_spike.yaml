@@ -1,0 +1,18 @@
+id: cache_write_spike
+title: Large cache write
+description: Detects turns with a high cache_creation_input_tokens value.
+category: cache
+severity: info
+confidence: high
+
+applies_to:
+  event_kind: assistant_usage
+
+thresholds:
+  min_cache_write_tokens: 20000
+
+message: "{{tokens}} tokens (logged) written to cache in one turn."
+recommendations:
+  - "Large context was cached — check recent large tool outputs."
+  - "Consider compacting before adding more context."
+  - "Review whether all cached content is necessary for this task."
