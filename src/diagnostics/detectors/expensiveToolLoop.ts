@@ -29,7 +29,11 @@ export class ExpensiveToolLoopDetector implements Detector {
     if (toolUses.length < minCycleLength * minCycles) return [];
 
     const families = toolUses.map((e) => toolFamily(e.toolName!));
-    const findings: Finding[] = [];
+    const candidates: Array<{
+      pattern: string[];
+      cycles: number;
+      involved: NormalizedEvent[];
+    }> = [];
 
     for (let start = 0; start <= families.length - minCycleLength * minCycles;) {
       let best:
@@ -65,16 +69,44 @@ export class ExpensiveToolLoopDetector implements Detector {
         continue;
       }
 
-      const patternStr = best.pattern.join(" → ");
       const involved = toolUses.slice(start, best.end);
 
-      findings.push({
+      candidates.push({ pattern: best.pattern, cycles: best.cycles, involved });
+
+      start = best.end;
+    }
+
+    const grouped = new Map<
+      string,
+      { pattern: string[]; cycles: number; regions: number; evidence: NormalizedEvent[] }
+    >();
+
+    for (const candidate of candidates) {
+      const key = candidate.pattern.join(" → ");
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.cycles += candidate.cycles;
+        existing.regions++;
+        existing.evidence.push(...candidate.involved);
+      } else {
+        grouped.set(key, {
+          pattern: candidate.pattern,
+          cycles: candidate.cycles,
+          regions: 1,
+          evidence: [...candidate.involved],
+        });
+      }
+    }
+
+    return Array.from(grouped.values()).map((group) => {
+      const patternStr = group.pattern.join(" → ");
+      return {
         id: rule.id,
         title: rule.title,
         severity: rule.severity,
         confidence: rule.confidence,
         category: rule.category,
-        evidence: involved.slice(0, 6).map((e) => ({
+        evidence: group.evidence.slice(0, 6).map((e) => ({
           sourceFile: e.sourceFile,
           lineNumber: e.lineNumber,
           timestamp: e.timestamp,
@@ -84,14 +116,11 @@ export class ExpensiveToolLoopDetector implements Detector {
         })),
         message: renderTemplate(rule.message, {
           pattern: patternStr,
-          cycles: best.cycles,
+          cycles: group.cycles,
+          regions: group.regions,
         }),
         recommendations: rule.recommendations,
-      });
-
-      start = best.end;
-    }
-
-    return findings;
+      };
+    });
   }
 }

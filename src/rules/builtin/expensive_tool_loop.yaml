@@ -12,7 +12,7 @@ thresholds:
   min_cycle_length: 2
   min_cycles: 3
 
-message: "Tool loop detected: {{pattern}} repeated {{cycles}} times."
+message: "Tool loop pattern {{pattern}} occurred {{regions}} times ({{cycles}} total repeats)."
 recommendations:
   - "Ask Claude to form a plan before making further tool calls."
   - "Summarize findings so far and proceed more directly."
