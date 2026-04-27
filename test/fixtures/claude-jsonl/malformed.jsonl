@@ -1,0 +1,5 @@
+{"type": "user", "uuid": "u1", "parentUuid": null, "isSidechain": false, "sessionId": "sess-mal", "cwd": "/proj", "timestamp": "2026-01-01T00:00:01.000Z", "version": "2.1.100", "gitBranch": "main", "userType": "external", "entrypoint": "claude-cli", "message": {"role": "user", "content": [{"type": "text", "text": "start"}]}}
+{this is not json
+null
+{"type": "assistant", "uuid": "a1", "parentUuid": "u1", "isSidechain": false, "sessionId": "sess-mal", "cwd": "/proj", "timestamp": "2026-01-01T00:00:02.000Z", "version": "2.1.100", "gitBranch": "main", "userType": "external", "entrypoint": "claude-cli", "requestId": "req_a1", "message": {"id": "msg-mal-1", "model": "claude-sonnet-4-6", "role": "assistant", "type": "message", "content": [{"type": "text", "text": "ok"}], "stop_reason": "tool_use", "usage": {"input_tokens": 50, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}}
+{broken again
